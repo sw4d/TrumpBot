@@ -80,6 +80,7 @@ words.each_with_index do |word, index|
 	option.capitalize! if word[0] == word.capitalize[0]
 
 	finalProduct << option + extras[index]
+	finalProduct << option.to_s + extras[index].to_s
 end
 
 #instead of puts, just blast to twitter world
