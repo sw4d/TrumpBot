@@ -5,7 +5,7 @@ TrumpBot
 
 This is a simple twitter bot that looks for the Don's latest tweets, evaluates them, then tries to sub the best words for some from a actual dictionary.
 
-Issues
+Issues:
 Retweets don't process well with the current code release.
 When running this script it runs a puts intead of automatically sending a tweet. My reasoning is I like to run this thing a few times per each Trump's tweet just to see what it comes up with
 
