@@ -1,5 +1,4 @@
-#copyright Stephen Ford 2019 all rights reserved
-
+# copyright Stephen Ford 2019 all rights reserved
 # frozen_string_literal: true
 
 require 'twitter'
@@ -37,9 +36,7 @@ def antonym?(docs)
 end
 
 ###############################################
-# A Regular expression could be used here for
-# better effect. Right now we skip hashtags
-# and user links
+# A Regular word is one without special chars.
 ###############################################
 
 def regular_word?(word)
@@ -52,27 +49,41 @@ end
 # This method basically determines if a word
 # should get an antonym or synonym. Once chosen
 # the word is reformatted to match however it
-# came from the tweet
+# came from the original tweet
 ###############################################
 
-def search_for_new_word(docs, word)
+def search_for_new_word(docs, _word)
   word_properties = parts_of_speech(docs)
-  drumpf_word = ''
+  parse_drumpf_word(docs, word_properties)
+end
 
-  if word_properties.size == 1 && word_properties.include?('verb')
-    drumpf_word = docs.css('entry syn').text.split(', ').map { |y| y.split(' ').first }.sample
+def build_synonym(docs)
+  docs.css('entry syn').text.split(', ').map { |y| y.split(' ').first }.sample
+end
+
+def build_antonym(antonyms)
+  base_location(antonyms).split(', ').map { |y| y.split(' ').first }.sample
+end
+
+###############################################
+# Our dictionary API can return antonyms in two
+# different places depending on the kind of
+# word it found. Hence the janky conditional
+###############################################
+
+def base_location(antonyms)
+  if antonyms[4].nil?
+    antonyms.text
   else
-    antonyms = docs.css('entry ant')
-
-    drumpf_word = if antonyms[4].nil?
-                    antonyms.text.split(', ').map { |y| y.split(' ').first }.sample
-                  else
-                    antonyms[4].text.split(', ').map { |y| y.split(' ').first }.sample
-                  end
+    antonyms[4].text
   end
+end
 
-  drumpf_word.capitalize if word[0] == word.capitalize[0]
-  drumpf_word
+def parse_drumpf_word(docs, word_properties)
+  return build_synonym(docs) if word_properties.size == 1 && word_properties.include?('verb')
+
+  antonyms = docs.css('entry ant')
+  build_antonym(antonyms)
 end
 
 ###############################################
