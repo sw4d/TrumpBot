@@ -1,89 +1,108 @@
+#copyright Stephen Ford 2019 all rights reserved
+
+# frozen_string_literal: true
+
 require 'twitter'
 require 'open-uri'
 require 'nokogiri'
 
-twitClient = Twitter::REST::Client.new do |config|
+TwitterClient = Twitter::REST::Client.new do |config|
   config.consumer_key        = 'YourKeyHere'
   config.consumer_secret     = 'YourSecretHere'
   config.access_token        = 'TwitAccessTokenHEre'
   config.access_token_secret = 'TwitSecretHere'
 end
 
-# I pass puniness @foxandfriends - Adore!
+###############################################
+# Returns the part of speech from the websters
+# object
+###############################################
 
-@dKey = ENV['THESAURUS_KEY']
-@bestWords = ['America', 'Congress']
-
-def prtCheck(docs)
-	docs.css('fl').map { |x| x.text }
+def parts_of_speech(docs)
+  docs.css('fl').map(&:text)
 end
 
-def partOfSpeechCheck(docs)
-	prtCheckMap = prtCheck(docs)
-	adj = prtCheckMap.include?('adjective')
-	adv = prtCheckMap.include?('adverb')
-	verb = prtCheckMap.include?('verb')
+###############################################
+# If a word doesn't have an antonym we may
+# leave the word alone, or use a synonym
+###############################################
 
-	return adj || adv || verb
+def antonym?(docs)
+  word_properties = parts_of_speech(docs)
+  adj = word_properties.include?('adjective')
+  adv = word_properties.include?('adverb')
+  verb = word_properties.include?('verb')
+
+  adj || adv || verb
 end
 
-def specialCharsScrub(word)
-	hashtag = word[0] != '#'
-	atSign = word[0] != '@'
-	return hashtag && atSign
+###############################################
+# A Regular expression could be used here for
+# better effect. Right now we skip hashtags
+# and user links
+###############################################
+
+def regular_word?(word)
+  hash_tag = word[0] != '#'
+  at_sign = word[0] != '@'
+  hash_tag && at_sign
 end
 
-def scrubForNewValue(docs, word)
-	prtCheckMap = prtCheck(docs)
-	nuWord = nil
+###############################################
+# This method basically determines if a word
+# should get an antonym or synonym. Once chosen
+# the word is reformatted to match however it
+# came from the tweet
+###############################################
 
-	if prtCheckMap.size == 1 && prtCheckMap.include?('verb')
-		nuWord = docs.css('entry syn').text.split(', ').map { |y| y.split(' ').first }.sample
-	else
-		wordMap = docs.css('entry ant')
-		if wordMap[4].nil?
-			nuWord = wordMap.text.split(', ').map { |y| y.split(' ').first }.sample
-		else
-			nuWord = wordMap[4].text.split(', ').map { |y| y.split(' ').first }.sample
-		end	
-	end	
-	nuWord.capitalize if word[0] == word.capitalize[0]
-	return nuWord
+def search_for_new_word(docs, word)
+  word_properties = parts_of_speech(docs)
+  drumpf_word = ''
+
+  if word_properties.size == 1 && word_properties.include?('verb')
+    drumpf_word = docs.css('entry syn').text.split(', ').map { |y| y.split(' ').first }.sample
+  else
+    antonyms = docs.css('entry ant')
+
+    drumpf_word = if antonyms[4].nil?
+                    antonyms.text.split(', ').map { |y| y.split(' ').first }.sample
+                  else
+                    antonyms[4].text.split(', ').map { |y| y.split(' ').first }.sample
+                  end
+  end
+
+  drumpf_word.capitalize if word[0] == word.capitalize[0]
+  drumpf_word
 end
 
-def findWordInfo(word)
-	if specialCharsScrub(word) && word.size > 1
-		url = "http://www.dictionaryapi.com/api/v1/references/thesaurus/xml/#{word}?key=#{@dKey}"
-		docs = Nokogiri::XML(open(url))
-			if partOfSpeechCheck(docs)
-				nuWord = scrubForNewValue(docs, word)
-				return nuWord
-			else
-				return word
-			end
-	else
-		return word
-	end
+###############################################
+# For every word in a tweet we analyze it to
+# see what kind of mischief can be had with it
+###############################################
+
+def find_word_info(word)
+  if regular_word?(word) && word.size > 1
+    url = "http://www.dictionaryapi.com/api/v1/references/thesaurus/xml/#{word}?key=#{ENV['THESAURUS_KEY']}"
+    docs = Nokogiri::XML(open(url))
+    return search_for_new_word(docs, word) if antonym?(docs)
+  else
+    word
+  end
 end
 
-# TODO theTweet does not account for when a retweet is most recent. need to grab all of the most recent tweets, then iterate through each
-#  to filter out the retweets. Using a conditional like: if object.is_a?(Twitter::Tweet)
-theTweet = twitClient.search("from:realdonaldtrump", result_type: "recent").take(1).first.text
-finalProduct = []
+recent_tweet = TwitterClient.search('from:realdonaldtrump', result_type: 'recent').take(1).first.text
+reconstructed_words_for_tweet = []
 
-words = theTweet.scan(/[\w'-@#]+/)
-extras = theTweet.scan(/[^0-9A-Za-z'-@#]/)
+words = recent_tweet.scan(/[\w'-@#]+/)
+extras = recent_tweet.scan(/[^0-9A-Za-z'-@#]/)
 
 words.each_with_index do |word, index|
-	option = findWordInfo(word)
-	option.upcase! if word == word.upcase
-	option.capitalize! if word[0] == word.capitalize[0]
+  option = find_word_info(word)
+  option.upcase! if word == word.upcase
+  option.capitalize! if word[0] == word.capitalize[0]
 
-	finalProduct << option + extras[index]
-	finalProduct << option.to_s + extras[index].to_s
+  reconstructed_words_for_tweet << option + extras[index]
+  reconstructed_words_for_tweet << option.to_s + extras[index].to_s
 end
 
-#instead of puts, just blast to twitter world
-puts finalProduct.join('')
-
-#Hillary Clinton intrigue outcome diffuse Undemocratic Party openly soften cease further Level Bernie Sanders. Expire she prevent end hinder
+TwitterClient.tweet(reconstructed_words_for_tweet.join(''))
